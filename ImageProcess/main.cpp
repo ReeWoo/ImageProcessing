@@ -9,6 +9,7 @@ int main()
 	brightness_inverse(img, result);
 	add_scalar(img, -100, result);
 	multiply_scalar(img, 1.5, result);
+	improve_contrast(img, 1.5, result);
 	cv::waitKey(0);
 	return 0;
 }

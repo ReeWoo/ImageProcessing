@@ -22,3 +22,9 @@ void multiply_scalar(const cv::Mat& img, const float k, cv::Mat& res)
 	res = img * k;
 	cv::imshow("multiply scalar", res);
 }
+
+void improve_contrast(const cv::Mat& img, const float k, cv::Mat& res)
+{
+	res = img + ((img - 128) * k);
+	cv::imshow("improve_contrast image2", res);
+}
