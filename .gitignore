@@ -9,3 +9,8 @@
 *.lastbuildstate
 *.dll
 *.lib
+*.suo
+*.db
+*.ipch
+*.idb
+*.ilk
