@@ -1,0 +1,11 @@
+*.sln
+*.vcxproj*
+*.exe*
+*.obj
+*.iobj
+*.log
+*.pdb
+*.tlog
+*.lastbuildstate
+*.dll
+*.lib
