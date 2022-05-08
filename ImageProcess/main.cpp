@@ -10,6 +10,8 @@ int main()
 	add_scalar(img, -100, result);
 	multiply_scalar(img, 1.5, result);
 	improve_contrast(img, 1.5, result);
+	gamma_correction(img, 0.6, result);
+
 	cv::waitKey(0);
 	return 0;
 }

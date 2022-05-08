@@ -6,3 +6,4 @@ void brightness_inverse(const cv::Mat& img, cv::Mat& res);
 void add_scalar(const cv::Mat& img, const int k, cv::Mat& res);
 void multiply_scalar(const cv::Mat& img, const float k, cv::Mat& res);
 void improve_contrast(const cv::Mat& img, const float k, cv::Mat& res);
+void gamma_correction(const cv::Mat& img, const float k, cv::Mat& res);
