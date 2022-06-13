@@ -11,6 +11,6 @@
 *.lib
 *.suo
 *.db
-*.ipch
+*.ip*
 *.idb
 *.ilk
