@@ -102,7 +102,21 @@ int main()
 	gaussian(img, result, 2 * 4 * sigma + 1, sigma, sigma);
 	sigma = 4;
 	gaussian(img, result, 2 * 4 * sigma + 1, sigma, sigma);
-	
+	sharpening(img, result);
+	laplacian(img, result);
+	high_boost(img, result, 1.0);
+	high_boost(img, result, 1.5);
+	add_gaussian_noise(img, result, 0, 1, 5);
+	salt_pepper(img, result, 5);
+	median_filter(img, result);
+	translation(img, result, -100, -50);
+	scale_transform(img, result, 3.3, 3.4);
+	scale_transform_with_bilinear(img, result, 3.3 , 3.4);
+	scale_transform_3order_interpolation(img, result, 3.3, 3.4);
+	edge_detection_roberts(img, result);
+	edge_detection_prewitt(img, result);
+	edge_detection_sobel(img, result);
+	edge_detection_canny(img, result, 30, 60);
 	cv::waitKey(0);
 	
 	return 0;
