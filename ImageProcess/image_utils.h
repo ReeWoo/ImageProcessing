@@ -37,3 +37,28 @@ void edge_detection_sobel(const cv::Mat& src, cv::Mat& res);
 void edge_detection_canny(const cv::Mat& src, cv::Mat& res, int threshold1, int threshold2);
 void on_threshold1_change(int pos, void* userdata);
 void on_threshold2_change(int pos, void* userdata);
+void hough_transform(const cv::Mat& src, cv::Mat& res);
+std::vector<cv::Point2f> harris_corner_detection(const cv::Mat& src, cv::Mat& res);
+
+void binarization(const cv::Mat& src, cv::Mat& res, unsigned char T);
+void calc_histogram(const cv::Mat& src, std::vector<int> histogram);
+void iterative_binarization(const cv::Mat& src, cv::Mat& res, unsigned char T = 0);
+
+void image_labeling(const cv::Mat& src, cv::Mat &res, std::vector<int> table);
+void contour_tracing(const cv::Mat& src, int sx, int sy, std::vector<cv::Point2i> &vec);
+void contour_trace(const cv::Mat& src, cv::Mat& res);
+
+void color_inverse(const cv::Mat& src, cv::Mat& res);
+void color2gray(const cv::Mat& src, cv::Mat& res);
+void color_edge_detection(const cv::Mat& src, cv::Mat& res);
+void color_histogram_equalization(const cv::Mat& src, cv::Mat& res);
+
+void erosion(const cv::Mat& src, cv::Mat& res);
+void dilation(const cv::Mat& src, cv::Mat& res);
+
+void opening(const cv::Mat& src, cv::Mat& res);
+void closing(const cv::Mat& src, cv::Mat& res);
+
+void contour_with_erosion(const cv::Mat& src, cv::Mat& res);
+
+void matching_template(const cv::Mat& src, cv::Mat& res, cv::Mat &color_img);

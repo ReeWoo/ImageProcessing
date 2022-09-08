@@ -531,7 +531,7 @@ void edge_detection_prewitt(const cv::Mat& src, cv::Mat& res)
 void edge_detection_sobel(const cv::Mat& src, cv::Mat& res)
 {
 	cv::Mat sobel1, sobel2;
-
+	res = cv::Mat::zeros(src.size(), src.type());
 	/*char data[] = { -1, 0,  1, -2, 0, 2, -1, 0, 1 };
 	char data2[] = { -1, -2,  -1, 0, 0, 0, 1, 2, 1 };
 	cv::Mat filter(3, 3, CV_8SC1, data);
@@ -554,7 +554,7 @@ void edge_detection_sobel(const cv::Mat& src, cv::Mat& res)
 		}
 	}*/
 
-	cv::Sobel(src, sobel1, -1, 1, 0);
+	/*cv::Sobel(src, sobel1, -1, 1, 0);
 	cv::Sobel(src, sobel2, -1, 0, 1);
 	
 	int val = 0;
@@ -569,7 +569,8 @@ void edge_detection_sobel(const cv::Mat& src, cv::Mat& res)
 		}
 	}
 	cv::imshow("sobel filter x", sobel1);
-	cv::imshow("sobel filter y", sobel2);
+	cv::imshow("sobel filter y", sobel2);*/
+	cv::Sobel(src, res, -1, 1, 1);
 	cv::imshow("sobel", res);
 }
 
@@ -739,7 +740,7 @@ void edge_detection_canny(const cv::Mat& src, cv::Mat& res, int threshold1, int 
 	}
 
 	cv::imshow("mag2", magnitude2);*/
-
+	res = canny_res;
 	cv::imshow(canny_window_name, canny_res);
 }
 
@@ -945,3 +946,801 @@ void on_threshold2_change(int pos, void* userdata)
 
 }
 
+void hough_transform(const cv::Mat& src, cv::Mat& res)
+{
+	int r = sqrt(src.cols* src.cols + src.rows * src.rows) + 1;
+	cv::Mat hough_space = cv::Mat::zeros(cv::Size(180, r), CV_64FC1);
+	double* hs = &hough_space.at<double>(0, 0);
+	cv::Mat sobel_x, sobel_y;
+	cv::Sobel(src, sobel_x, -1, 1, 0);
+	cv::Sobel(src, sobel_y, -1, 0, 1);
+	sobel_x.convertTo(sobel_x, CV_16SC1);
+	sobel_y.convertTo(sobel_y, CV_16SC1);
+	cv::Canny(sobel_x, sobel_y, res, 20, 70);
+	cv::Mat canny;
+	res.copyTo(canny);
+	int angle;
+
+
+	for (int i = 0; i < canny.rows; ++i)
+	{
+		for (int j = 0; j < canny.cols; ++j)
+		{
+			if (canny.data[i * canny.cols + j] != 0)
+			{
+				for (int q = 0; q < hough_space.cols; ++q)
+				{
+					angle = q;
+					int tempr = cos(angle / 180. * 3.141592)* i + sin(angle / 180. * 3.141592) * j;
+					if (tempr >= r || tempr < 0) continue;
+					hs[tempr * hough_space.cols + angle]++;
+				}
+			}
+		}
+	}
+
+
+
+	hough_space /= 255;
+	cv::imshow("canny", res);
+	cv::imshow("hough space", hough_space);
+	
+
+	hough_space *= 255;
+	int threshold = 100;
+	int x1, y1, x2, y2;
+	src.copyTo(res);
+
+
+	for (int i = 0; i < hough_space.rows; ++i)
+	{
+		for (int j = 0; j < hough_space.cols; ++j)
+		{
+			if (hs[i * hough_space.cols + j] >= threshold * 1)
+			{
+				if ((j >= 0 && j < 45) || (j >= 135 && j < 180))
+				{
+					x1 = 0;
+					x2 = src.cols - 1;
+					y1 = i / cos(j / 180. * 3.141592);
+					y2 = (i - x2 * sin(j / 180. * 3.141592)) / cos(j / 180. * 3.141592);
+				}
+				else
+				{
+					y1 = 0;
+					y2 = src.rows - 1;
+					x1 = i / sin(j / 180. * 3.141592);
+					x2 = (i - y2 * cos(j / 180. * 3.141592)) / sin(j / 180. * 3.141592);
+				}
+				cv::line(res, cv::Point(x1, y1), cv::Point(x2, y2), cv::Scalar(0, 0, 0), 1);
+			}
+		}
+	}
+
+	cv::Mat res2;
+	src.copyTo(res2);
+	std::vector<cv::Vec2f> lines; // will hold the results of the detection
+
+
+	HoughLines(canny, lines, 1, CV_PI / 180, threshold, 0, 0); // runs the actual detection
+
+
+	// Draw the lines
+	for (size_t i = 0; i < lines.size(); i++)
+	{
+		float rho = lines[i][0], theta = lines[i][1];
+		cv::Point pt1, pt2;
+		double a = cos(theta), b = sin(theta);
+		double x0 = a * rho, y0 = b * rho;
+		pt1.x = cvRound(x0 + 1000 * (-b));
+		pt1.y = cvRound(y0 + 1000 * (a));
+		pt2.x = cvRound(x0 - 1000 * (-b));
+		pt2.y = cvRound(y0 - 1000 * (a));
+		line(res2, pt1, pt2, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+	}
+	imshow("hough transform", res);
+	imshow("opencv hough transform", res2);
+
+}
+
+std::vector<cv::Point2f> harris_corner_detection(const cv::Mat& src, cv::Mat& res)
+{
+	cv::Mat dx2 = cv::Mat::zeros(cv::Size(src.cols, src.rows), CV_32F);
+	cv::Mat dy2 = cv::Mat::zeros(cv::Size(src.cols, src.rows), CV_32F);
+	cv::Mat dxy = cv::Mat::zeros(cv::Size(src.cols, src.rows), CV_32F);
+	float tx, ty;
+	float* dx2_ = &dx2.at<float>(0, 0);
+	float* dy2_ = &dy2.at<float>(0, 0);
+	float* dxy_ = &dxy.at<float>(0, 0);
+	cv::Mat src2;
+	src.convertTo(src2, CV_32F, 1. / 255);
+	
+	float* src2_ = &src2.at<float>(0, 0);
+	for (int i = 1; i < src.rows - 1; ++i)
+	{
+		for (int j = 1; j < src.cols - 1; ++j)
+		{
+			//tx = (src2_[(i - 1) * src.cols + j + 1] + src2_[i * src.cols + j + 1] + src2_[(i + 1) * src.cols + j + 1] - (src2_[(i - 1) * src.cols + j - 1] + src2_[i * src.cols + j - 1] + src2_[(i + 1) * src.cols + j - 1])) / 6.;
+			tx = src2_[i * src.cols + j + 1] - src2_[i * src.cols + j - 1];
+			ty = src2_[(i + 1) * src.cols + j] - src2_[(i - 1) * src.cols + j];
+			//ty = (src2_[(i + 1) * src.cols + j - 1] + src2_[(i + 1) * src.cols + j] + src2_[(i + 1) * src.cols + j + 1] - (src2_[(i - 1) * src.cols + j - 1] + src2_[(i - 1) * src.cols + j] + src2_[(i - 1) * src.cols + j + 1])) / 6.;
+
+			dx2_[i * src.cols + j] = tx * tx;
+			dy2_[i * src.cols + j] = ty * ty;
+			dxy_[i * src.cols + j] = tx * ty;
+		}
+	}
+
+	cv::imshow("dx2", dx2);
+	cv::imshow("dy2", dy2);
+	cv::imshow("dxy", dxy);
+	
+	cv::GaussianBlur(dx2, dx2, cv::Size(5, 5), 0, 1);
+	cv::GaussianBlur(dy2, dy2, cv::Size(5, 5), 0, 1);
+	cv::GaussianBlur(dxy, dxy, cv::Size(5, 5), 0, 1);
+
+	cv::Mat crf = cv::Mat::zeros(cv::Size(src.cols, src.rows), CV_32F);
+	float k = 0.04;
+	float* crf_ = &crf.at<float>(0, 0);
+	for (int i = 2; i < src.rows - 2; ++i)
+	{
+		for (int j = 2; j < src.cols - 2; ++j)
+		{
+			crf_[i * src.cols + j] = (dx2_[i * src.cols + j] * dy2_[i * src.cols + j] - dxy_[i * src.cols + j] * dxy_[i * src.cols + j]) - k * (dx2_[i * src.cols + j] + dy2_[i * src.cols + j]) * (dx2_[i * src.cols + j] + dy2_[i * src.cols + j]);
+		}
+	}
+
+	std::vector<cv::Point2f> result;
+	float cvf_value;
+	//float threshold = 0.0002;
+	float threshold = 0.01;
+	for (int i = 2; i < src.rows - 2; ++i)
+	{
+		for (int j = 2; j < src.cols - 2; ++j)
+		{
+			cvf_value = crf_[i * src.cols + j];
+			if (cvf_value > threshold)
+			{
+				if (cvf_value > crf_[(i - 1) * src.cols + j] && cvf_value > crf_[(i - 1) * src.cols + j + 1] && cvf_value > crf_[i * src.cols + j + 1] && cvf_value > crf_[(i + 1) * src.cols + j + 1] && cvf_value > crf_[(i + 1) * src.cols + j]
+					&& cvf_value > crf_[(i + 1) * src.cols + j - 1] && cvf_value > crf_[i * src.cols + j - 1] && cvf_value > crf_[(i - 1) * src.cols + j - 1])
+				{
+					result.push_back(cv::Point2f(j, i));
+				}
+			}
+		}
+	}
+	cv::Mat res2, res3, cs_abs;
+	cv::cornerHarris(src, res2, 3, 3, k);
+	cv::normalize(res2, res3, 0, 255, cv::NORM_MINMAX, CV_32FC1, cv::Mat());
+	cv::convertScaleAbs(res3, cs_abs);
+	cv::Mat img_copy = src.clone();
+	// Drawing a circle around corners
+	for (int j = 0; j < res3.rows; j += 1)
+		for (int i = 0; i < res3.cols; i += 1)
+			if ((int)res3.at<float>(j, i) > 120)
+				circle(img_copy, cv::Point(i, j), 7, cv::Scalar(255, 0, 255), 0, 4, 0);
+	cv::imshow("opencv harris corner", img_copy);
+	return result;
+
+}
+
+void color_inverse(const cv::Mat& src, cv::Mat& res)
+{
+	if (src.channels() != 3)
+	{
+		std::cout << "컬러 영상을 넣어주세요" << std::endl;
+		return;
+	}
+	int value = 0;
+	res = cv::Mat(src.rows, src.cols, src.type());
+
+
+
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			for (int k = 0; k < src.channels(); ++k)
+			{
+				value = 255 - src.data[(i * src.cols + j) * src.channels() + k];
+				if (value < 0) value = 0;
+				if (value > 255) value = 255;
+				res.data[(i * src.cols + j) * src.channels() + k] = value;
+			}
+		}
+	}
+	cv::imshow("원본 이미지", src);
+	cv::imshow("컬러 이미지 반전", res);
+}
+
+void color2gray(const cv::Mat& src, cv::Mat& res)
+{
+	if (src.channels() != 3)
+	{
+		std::cout << "컬러 영상을 넣어주세요" << std::endl;
+		return;
+	}
+	int value = 0;
+	res = cv::Mat(src.rows, src.cols, CV_8UC1);
+
+
+
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			//value = 0.299 * src.data[(i * src.cols + j) * 3 + 2] + 0.587 * src.data[(i * src.cols + j) * 3 + 1] + 0.114 * src.data[(i * src.cols + j) * 3];
+
+			value = 4899 * src.data[(i * src.cols + j) * 3 + 2] + 9617 * src.data[(i * src.cols + j) * 3 + 1] + 1868 * src.data[(i * src.cols + j) * 3];
+			value = value >> 14;
+			if (value < 0) value = 0;
+			if (value > 255) value = 255;
+			res.data[(i * src.cols + j)] = value;
+		}
+	}
+
+
+	cv::imshow("원본 이미지", src);
+	cv::imshow("컬러에서 그레이스케일", res);
+}
+
+void color_edge_detection(const cv::Mat& src, cv::Mat& res)
+{
+	if (src.channels() != 3)
+	{
+		std::cout << "컬러 영상을 넣어주세요" << std::endl;
+		return;
+	}
+	int value = 0;
+	res = cv::Mat(src.rows, src.cols, CV_8UC1);
+	cv::Mat yuv_img;
+	cv::cvtColor(src, yuv_img, cv::COLOR_BGR2YUV);
+	std::vector<cv::Mat> color_vec;
+	cv::split(yuv_img, color_vec);
+	cv::Mat res1, res2, res3;
+	edge_detection_prewitt(color_vec[0], res1);
+	edge_detection_prewitt(color_vec[1], res2);
+	edge_detection_prewitt(color_vec[2], res3);
+
+
+
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			value = sqrt(res1.data[i * src.cols + j] * res1.data[i * src.cols + j] +
+				(res2.data[i * src.cols + j] * 0.5) * (res2.data[i * src.cols + j] * 0.5) +
+				(res3.data[i * src.cols + j] * 0.5) *  (res3.data[i * src.cols + j] * 0.5));
+
+			if (value < 0) value = 0;
+			if (value > 255) value = 255;
+			res.data[(i * src.cols + j)] = value;
+		}
+	}
+	//cv::Sobel(src, res, -1, 1, 1);
+
+	cv::imshow("원본 이미지", src);
+	cv::imshow("컬러 엣지 디텍션", res);
+}
+
+void color_histogram_equalization(const cv::Mat& src, cv::Mat& res)
+{
+	if (src.channels() != 3)
+	{
+		std::cout << "컬러 영상을 넣어주세요" << std::endl;
+		return;
+	}
+	int value = 0;
+	cv::Mat yuv_img, y_he;
+
+	cv::cvtColor(src, yuv_img, cv::COLOR_BGR2YUV);
+	std::vector<cv::Mat> color_vec;
+	cv::split(yuv_img, color_vec);
+	cv::equalizeHist(color_vec[0], color_vec[0]);
+	cv::merge(color_vec, res);
+	cv::cvtColor(res, res, cv::COLOR_YUV2BGR);
+
+	cv::imshow("원본 이미지", src);
+	cv::imshow("컬러 히스토그램 평활화", res);
+
+}
+
+void binarization(const cv::Mat& src, cv::Mat& res, const unsigned char T)
+{
+	
+
+	if (res.data == nullptr)
+	{
+		res = cv::Mat::zeros(src.size(), src.type());
+	}
+
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			res.data[i * res.cols + j] = src.data[i * src.cols + j] > T ? 0 : 255;
+		}
+	}
+	cv::Mat opencv_res;
+	cv::threshold(src, res, T, 255, cv::THRESH_BINARY_INV);
+	cv::imshow("opencv 이진화 결과", res);
+	//cv::imshow("이진화 결과 임계값 : " + std::to_string(T), res);
+	
+
+}
+
+
+void calc_histogram(const cv::Mat& src, std::vector<float> &histogram)
+{
+	if (histogram.size() == 0)
+	{
+		histogram = std::vector<float>(256);
+	}
+
+	float plane = src.cols* src.rows;
+
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			++histogram[src.data[i * src.cols + j]];
+		}
+	}
+
+	if (plane != 0)
+	{
+		for (int i = 0; i < histogram.size(); ++i)
+			histogram[i] /= plane;
+	}
+	
+}
+void iterative_binarization(const cv::Mat& src, cv::Mat& res, unsigned char T)
+{
+	std::vector<float> histogram;
+	calc_histogram(src, histogram);
+
+	/*
+	* 1. 초기 임계값 설정
+	* 임계값을 매개변수로 넘기지 않는다면 영상의 평균 픽셀값으로 설정
+	*/
+	
+	if (T == 0) // 임계값 설정이 안되었다면
+	{
+		float sum = 0;
+		for (int i = 0; i < 256; ++i)
+		{
+			sum += i * histogram[i];
+		}
+		T = sum;
+	}
+	
+
+	
+
+	float m1 = 0, m2 = 0;
+	float m1_ = 0, m2_ = 0;
+	float u1 = 0, u2 = 0;
+	unsigned char threshold = 0;
+
+	/* 4. T값에 변화가 없을 때 까지 반복
+	*/
+	while (threshold != T)
+	{
+		threshold = T;
+
+		/*
+		* 2. T 보다 작은 픽셀의 평균값 m1, 큰 픽셀의 평균값 m2
+		*/
+		for (int i = 0; i <= T; ++i)
+		{
+			m1 += i * histogram[i];
+			m1_ += histogram[i];
+		}
+		if (m1_ != 0)
+			u1 = m1 / m1_;
+	
+		for (int i = T + 1; i <= 255; ++i)
+		{
+			m2 += i * histogram[i];
+			m2_ += histogram[i];
+		}
+		if (m2_ != 0)
+			u2 = m2 / m2_;
+
+		/*
+		* 3. 임계값 갱신
+		*/
+		T = (u1 + u2) / 2;
+	}
+	binarization(src, res, T);
+}
+
+
+void image_labeling(const cv::Mat& src, cv::Mat& res, std::vector<int> table)
+{
+	table = std::vector<int>(1);
+
+	int dir_x[2] = { -1, 0 };
+	int dir_y[2] = { 0, -1 };
+
+	int y, x;
+	std::vector<int> val = std::vector<int>(2);
+	
+	cv::Mat map = cv::Mat::zeros(src.size(), src.type());
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			if (src.data[i * src.cols + j] == 255)
+			{
+				for (int k = 0; k < 2; ++k)
+				{
+					x = j + dir_x[k];
+					y = i + dir_y[k];
+					if (y < 0 || x < 0 || y >= src.rows || x >= src.cols)
+					{
+						val[k] = -1;
+						continue;
+					}
+					val[k] = map.data[y * src.cols + x];
+				}
+				if (val[0] <= 0 && val[1] <= 0) //레이블이 없다면
+				{
+					table.push_back(table[table.size() - 1] + 1);
+					map.data[i * src.cols + j] = table[table.size() - 1];
+				}
+				else if (val[0] > 0 && val[1] <= 0)
+				{
+					map.data[i * src.cols + j] = val[0];
+				}
+				else if (val[1] > 0 && val[0] <= 0)
+				{
+					map.data[i * src.cols + j] = val[1];
+				}
+				else if (val[0] > 0 && val[1] > 0)
+				{
+					if (val[1] == val[0])
+					{
+						map.data[i * src.cols + j] = val[0];
+					}
+					else
+					{
+						if (val[1] < val[0])
+						{
+							map.data[i * src.cols + j] = val[1];
+							table[val[0]] = val[1];
+						}
+						else
+						{
+							map.data[i * src.cols + j] = val[0];
+							table[val[1]] = val[0];
+						}
+					}
+				}
+			}
+		}
+	}
+
+	
+	std::vector<int> tab = std::vector<int>(1);
+	for (int i = 1; i < table.size(); ++i)
+	{
+		std::cout << table[i] << std::endl;
+		if (table[i] != i)
+		{
+			continue;
+		}
+		tab.push_back(i);
+	}
+
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			map.data[i * src.cols + j] = table[map.data[i * src.cols + j]];
+		}
+	}
+	//std::cout << map << std::endl;
+	std::vector<cv::Rect> rectangles;
+	int min_x, min_y, max_x, max_y;
+
+	for (int k = 1; k <= tab.size(); ++k)
+	{
+		min_x = src.cols;
+		max_x = 0;
+		min_y = src.rows;
+		max_y = 0;
+		for (int i = 0; i < src.rows; ++i)
+		{
+			for (int j = 0; j < src.cols; ++j)
+			{
+				if (map.data[i * src.cols + j] == k)
+				{
+					if (i < min_y) min_y = i;
+					if (i > max_y) max_y = i;
+
+					if (j > max_x) max_x = j;
+					if (j < min_x) min_x = j;
+
+				}
+
+			}
+		}
+		
+		rectangles.push_back(cv::Rect(min_x, min_y, max_x - min_x, max_y - min_y));
+	}
+
+	for (int i = 0; i < rectangles.size(); ++i)
+	{
+		std::cout << rectangles[i] << std::endl;
+		cv::rectangle(res, rectangles[i], cv::Scalar(255, 0, 0), 2);
+	}
+
+	cv::imshow("이미지 레이블링!", res);
+	
+}
+
+
+
+void contour_tracing(const cv::Mat& src, int sx, int sy, std::vector<cv::Point2i>& vec)
+{
+	if (src.data[sy * src.cols + sx] != 255) return;
+
+
+	int dir_x[8] = { 1, 1, 0, -1, -1, -1, 0, 1 };
+	int dir_y[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+	
+	int dir = 0, x, y;
+	x = sx;
+	y = sy;
+	int cnt = 0;
+	int current_x, current_y;
+	while (1)
+	{
+		current_y = dir_y[dir] + y;
+		current_x = dir_x[dir] + x;
+
+		if (current_x < 0 || current_y < 0 || current_y >= src.rows || current_x >= src.cols || src.data[current_y * src.cols + current_x] == 0)
+		{
+			if (++dir > 7) dir = 0;
+			++cnt;
+
+			if (cnt >= 8)
+			{
+				vec.push_back(cv::Point2i(current_x, current_y));
+				break;
+			}
+		}
+		else
+		{
+			vec.push_back(cv::Point2i(current_x, current_y));
+			x = current_x;
+			y = current_y;
+
+			cnt = 0;
+			dir = (dir + 6) % 8;
+		}
+		
+		if (x == sx && y == sy && dir == 0)
+			break; 
+	}
+
+	
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			if (src.data[i * src.cols + j] == 255)
+			{
+				dir = 0;
+
+				
+				if (x < 0 || y < 0 || y >= src.rows || x >= src.cols)
+					continue;
+				
+			}
+		}
+	}
+
+}
+
+void contour_trace(const cv::Mat& src, cv::Mat &res)
+{
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			if (src.data[i * src.cols + j] == 255)
+			{
+				std::vector<cv::Point2i> vec;
+				contour_tracing(src, j, i, vec);
+
+				for (int k = 0; k < vec.size(); ++k)
+				{
+					res.data[(vec[k].y * src.cols + vec[k].x) * 3 ] = 0;
+					res.data[(vec[k].y * src.cols + vec[k].x) * 3 + 1] = 0;
+					res.data[(vec[k].y * src.cols + vec[k].x) * 3 + 2] = 255;
+				}
+				i = src.rows;
+				j = src.cols;
+			}
+		}
+	}
+	cv::imshow("ss", res);
+}
+
+
+void erosion(const cv::Mat& src, cv::Mat& res)
+{
+	// 침식
+	res = cv::Mat::zeros(src.size(), src.type());
+
+	int move_x[4] = { 1, 0, -1, 0 };
+	int move_y[4] = { 0, 1, 0, -1 };
+	int x, y;
+	bool check;
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			check = false;
+			for (int k = 0; k < 4; ++k)
+			{
+				y = move_y[k] + i;
+				x = move_x[k] + j;
+				if (x < 0 || y < 0 || y >= src.rows || x >= src.cols) continue;
+
+				if (src.data[y * src.cols + x] == 0)
+				{
+					check = true;
+					break;
+				}
+			}
+			if (check)
+				res.data[i * src.cols + j] = 0;
+			else
+				res.data[i * src.cols + j] = 255;
+		}
+	}
+
+	cv::Mat res2;
+	cv::erode(src, res2, cv::Mat());
+	cv::imshow("침식 연산", res);
+	cv::imshow("침식 연산 opencv", res2);
+	
+}
+void dilation(const cv::Mat& src, cv::Mat& res)
+{
+	// 팽창
+	res = cv::Mat::zeros(src.size(), src.type());
+
+	int move_x[4] = { 1, 0, -1, 0 };
+	int move_y[4] = { 0, 1, 0, -1 };
+	int x, y;
+	bool check;
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			check = false;
+			for (int k = 0; k < 4; ++k)
+			{
+				y = move_y[k] + i;
+				x = move_x[k] + j;
+				if (x < 0 || y < 0 || y >= src.rows || x >= src.cols) continue;
+
+				if (src.data[y * src.cols + x] == 255)
+				{
+					check = true;
+					break;
+				}
+			}
+			if (check)
+				res.data[i * src.cols + j] = 255;
+			else
+				res.data[i * src.cols + j] = 0;
+		}
+	}
+	cv::Mat res2;
+	cv::dilate(src, res2, cv::Mat());
+	cv::imshow("팽창 연산", res);
+	cv::imshow("팽창 연산 opencv", res2);
+}
+
+
+void opening(const cv::Mat& src, cv::Mat& res)
+{
+	// 침식 후 팽창
+	cv::Mat result;
+
+	erosion(src, res);
+	dilation(res, result);
+
+	cv::Mat res2;
+	
+	cv::morphologyEx(src, res2, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
+	cv::imshow("열기 연산", result);
+	cv::imshow("열기 연산 opencv", res2);
+}
+void closing(const cv::Mat& src, cv::Mat& res)
+{
+	// 팽창 후 침식
+	cv::Mat result;
+
+	dilation(src, res);
+	erosion(res, result);
+	
+
+	cv::Mat res2;
+
+	cv::morphologyEx(src, res2, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
+
+	cv::imshow("닫기 연산", result);
+	cv::imshow("닫기 연산 opencv", res2);
+}
+
+
+void contour_with_erosion(const cv::Mat& src, cv::Mat& res)
+{
+	cv::Mat result;
+	erosion(src, result);
+	res = src - result;
+
+	cv::imshow("모폴로지를 활용한 외곽선 검출 연산", res);
+}
+
+void matching_template(const cv::Mat& src, cv::Mat& template_img, cv::Mat &color_img)
+{
+	int N = template_img.cols * template_img.rows;
+	cv::Scalar mean_t, stddev_t, mean_s, std_s;
+	cv::Mat copy_res;
+	template_img.copyTo(copy_res);
+	cv::meanStdDev(copy_res, mean_t, stddev_t);
+	float m_t = mean_t[0];
+	float std_t = stddev_t[0];
+	copy_res = copy_res - m_t;
+
+	cv::Mat temp = cv::Mat::zeros(src.size(), CV_64F);
+	double *tmp = &temp.at<double>(0, 0);
+	float max = -1;
+	double min = 100000000000;
+	int x, y;
+	double diff;
+	for (int i = 0; i < src.rows - template_img.rows; ++i)
+	{
+		for (int j = 0; j < src.cols - template_img.cols; ++j)
+		{
+			
+			cv::Rect rect(j, i, template_img.cols, template_img.rows);
+			cv::Mat subImage = src(rect);
+			
+			// SSD
+			cv::Mat diff_img = subImage - template_img;
+			cv::Mat squared_diff = diff_img.mul(diff_img);
+			tmp[i * src.rows + j] = cv::sum(squared_diff)[0];
+			
+			//NNC
+			/*cv::meanStdDev(subImage, mean_s, std_s);
+			cv::Mat deviation = subImage - mean_s[0];
+			cv::Mat nnc_img = deviation.mul(copy_res) / (std_t * std_s[0]);
+			tmp[i * src.rows + j] = cv::sum(nnc_img)[0] / N;*/
+
+			
+
+			if (min > tmp[i * src.rows + j])
+			//if (max < tmp[i * src.rows + j])
+			{
+				y = i;
+				x = j;
+				min = tmp[i * src.rows + j];
+				//max = tmp[i * src.rows + j];
+			}
+		}
+	}
+
+	cv::Mat draw;
+	src.copyTo(draw);
+	cv::rectangle(color_img, cv::Rect(x, y, template_img.cols, template_img.rows), cv::Scalar(255, 0, 0), 1);
+	std::cout << x << " " << y << " " << min << std::endl;
+	cv::imshow("ss", color_img);
+}
